@@ -1,0 +1,18 @@
+{
+  "" : {
+    "diagnostics" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests-master.dia",
+    "emit-module-dependencies" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests-master-emit-module.dia",
+    "swift-dependencies" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests-master.swiftdeps"
+  },
+  "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/RunnerTests/RunnerTests.swift" : {
+    "const-values" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.swiftconstvalues",
+    "dependencies" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.d",
+    "diagnostics" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.dia",
+    "index-unit-output-path" : "/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.o",
+    "llvm-bc" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.bc",
+    "object" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.o",
+    "swift-dependencies" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests.swiftdeps",
+    "swiftmodule" : "/Users/panospavlatos/Desktop/ATCOM Projects/demo_project_atcom/ios/build/Runner.build/Debug-iphoneos/RunnerTests.build/Objects-normal/arm64/RunnerTests~partial.swiftmodule"
+  }
+}
