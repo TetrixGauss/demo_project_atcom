@@ -7,8 +7,8 @@ import Flutter
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        GeneratedPluginRegistrant.register(with: self)
-        FlutterBluetoothPlugin.register(with: registrar(forPlugin: "FlutterBluetoothPlugin")!)
+        let controller = window?.rootViewController as! FlutterViewController
+        BluetoothPlugin.register(with: controller.registrar(forPlugin: "BluetoothPlugin"))
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 }
