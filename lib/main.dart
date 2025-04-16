@@ -37,6 +37,8 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
 
+  bool isBLE = false;
+
   Future<void> _incrementCounter() async {
     BluetoothService.instance.startScanning();
     showDialog(
@@ -50,7 +52,6 @@ class _MyHomePageState extends State<MyHomePage> {
               child: StreamBuilder<List<Device>>(
                   stream: BluetoothService.instance.discoveredDevicesStream,
                   builder: (ctx, snapshot) {
-
                     final devices = snapshot.data ?? [];
                     if (devices.isEmpty) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -127,54 +128,52 @@ class _MyHomePageState extends State<MyHomePage> {
             StreamBuilder(
                 stream: BluetoothService.instance.pairingStateStream,
                 builder: (context, snapshot) {
-                  if(!snapshot.hasData) {
-
-                  }
+                  if (!snapshot.hasData) {}
                   return Flexible(child: Text(snapshot.data.toString()));
                 }),
-            ValueListenableBuilder(valueListenable: BluetoothService.instance.deviceBondedNotifier, builder: (_, value, __) {
-              if(value != null) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Flexible(child: Text("Device Bonded: ${value.name} - ${value.address} - ${value.type}")),
-                    TextButton(
-                      onPressed: () async {
-                        value.uuids.forEach((element) {
-                          print("UUID: $element");
-                        });
-                        // Connect to the device using the first UUID
-                        if(value.uuids.isEmpty) {
-                          await BluetoothService.instance.connectToDevice(value.address, "");
-                        } else {
-                          await BluetoothService.instance.connectToDevice(value.address, value.uuids.first);
-                        }
-                      },
-                      child: Text("Connect"),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        value.uuids.forEach((element) {
-                          print("UUID: $element");
-                        });
-                        await BluetoothService.instance.sendData(value.address, "Hello from Flutter ${DateTime.now()}");
-                        await BluetoothService.instance.sendData(value.address, "Nikooooooooo");
-                      },
-                      child: Text("Send Data"),
-                    ),
-                  ],
-                );
-              }
-              return const SizedBox.shrink();
-
-            }),
+            ValueListenableBuilder(
+                valueListenable: BluetoothService.instance.deviceBondedNotifier,
+                builder: (_, value, __) {
+                  if (value != null) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(child: Text("Device Bonded: ${value.name} - ${value.address} - ${value.type}")),
+                        TextButton(
+                          onPressed: () async {
+                            value.uuids.forEach((element) {
+                              print("UUID: $element");
+                            });
+                            // Connect to the device using the first UUID
+                            if (value.uuids.isEmpty) {
+                              await BluetoothService.instance.connectToDevice(isBLE, value.address, "");
+                            } else {
+                              await BluetoothService.instance.connectToDevice(isBLE, value.address, value.uuids.first);
+                            }
+                          },
+                          child: Text("Connect"),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            value.uuids.forEach((element) {
+                              print("UUID: $element");
+                            });
+                            await BluetoothService.instance.sendData(value.address, "Hello from Flutter ${DateTime.now()}");
+                            await BluetoothService.instance.sendData(value.address, "Nikooooooooo");
+                          },
+                          child: Text("Send Data"),
+                        ),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }),
             StreamBuilder(
                 stream: BluetoothService.instance.receivedDataStream,
                 builder: (context, snapshot) {
                   return Flexible(child: Text(snapshot.data.toString()));
                 }),
-
             StreamBuilder<List<Device>>(
                 stream: BluetoothService.instance.pairedDevicesStream,
                 builder: (context, snapshot) {
@@ -191,7 +190,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         return ListTile(
                           title: Text("Device ${device.name} - ${device.address} - ${device.type}"),
                           onTap: () async {
-                            await BluetoothService.instance.connectToDevice(device.address, "");
+                            await BluetoothService.instance.connectToDevice(isBLE, device.address, "");
                           },
                         );
                       },

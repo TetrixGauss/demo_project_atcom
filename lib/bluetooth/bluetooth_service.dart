@@ -147,8 +147,8 @@ class BluetoothService extends ChangeNotifier {
     });
   }
 
-  Future<void> startScanning({int? timeout}) async {
-    await _methodChannel.invokeMethod('startScanning', {'timeout': timeout});
+  Future<void> startScanning({bool? isBLE, int? timeout}) async {
+    await _methodChannel.invokeMethod('startScanning', {'isBLE': isBLE ?? false, 'timeout': timeout});
   }
 
   Future<void> stopScanning() async {
@@ -178,8 +178,8 @@ class BluetoothService extends ChangeNotifier {
   Stream<Map<String, dynamic>> get pairingStateStream =>
       _pairingStateChannel.receiveBroadcastStream().map((event) => Map<String, dynamic>.from(event));
 
-  Future<void> connectToDevice(String address, String uuid) async {
-    await _methodChannel.invokeMethod('connectToDevice', {'address': address, 'uuid': uuid});
+  Future<void> connectToDevice(bool? isBLE, String address, String uuid) async {
+    await _methodChannel.invokeMethod('connectToDevice', {'address': address, 'uuid': uuid, 'isBLE': isBLE ?? false});
   }
 
   Future<void> disconnect() async {
@@ -221,30 +221,28 @@ class BluetoothService extends ChangeNotifier {
       }
       return devices;
     });
-
   }
 
   Stream<List<Device>> get pairedDevicesStream {
     List<Device> devices = [];
     return _pairedDevicesChannel.receiveBroadcastStream().map((device) {
-    if (device.containsKey('event') && device['event'] == 'timeout') {
-      print('Scan timeout: ${device['message']}');
-    } else {
-      print("Discovered device: ${device['name']} - ${device['address']} - ${device['type']}");
-      final Device newDevice = Device(
-        name: device['name'] ?? "",
-        address: device['address'] ?? "",
-        uuids: device['uuids'] as List<dynamic>? ?? [],
-        type: device['type'] ?? "",
-      );
-      if (!devices.any((d) => d.address == newDevice.address)) {
-        devices.add(newDevice);
+      if (device.containsKey('event') && device['event'] == 'timeout') {
+        print('Scan timeout: ${device['message']}');
+      } else {
+        print("Discovered device: ${device['name']} - ${device['address']} - ${device['type']}");
+        final Device newDevice = Device(
+          name: device['name'] ?? "",
+          address: device['address'] ?? "",
+          uuids: device['uuids'] as List<dynamic>? ?? [],
+          type: device['type'] ?? "",
+        );
+        if (!devices.any((d) => d.address == newDevice.address)) {
+          devices.add(newDevice);
+        }
       }
-    }
-    return devices;
-  });
+      return devices;
+    });
   }
-
 }
 
 class Device {
@@ -257,6 +255,6 @@ class Device {
 
   @override
   String toString() {
-    return 'Device{name: $name, address: $address, type: $type} ' ;
+    return 'Device{name: $name, address: $address, type: $type} ';
   }
 }

@@ -45,5 +45,17 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+    <string>We need Bluetooth to connect to devices.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>bluetooth-central</string>
+        <string>bluetooth-peripheral</string>
+        <string>external-accessory</string>
+    </array>
+    <key>UISupportedExternalAccessoryProtocols</key>
+    <array>
+        <string>com.apple.spp</string> <!-- Replace with your device's protocol string -->
+    </array>
 </dict>
 </plist>
