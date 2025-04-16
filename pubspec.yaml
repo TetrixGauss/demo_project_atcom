@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 #  bluetooth_classic: ^0.0.3
   flutter_blue_classic: ^0.0.4
+  permission_handler: ^12.0.0+1
 #  flutter_bluetooth_serial: ^0.4.0
 
 dev_dependencies:
