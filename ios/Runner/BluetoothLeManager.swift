@@ -26,13 +26,13 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
             print("\(logTag): Bluetooth is powered on")
         case .poweredOff:
             print("\(logTag): Bluetooth is powered off")
-            eventCallback(.Error(code: "BLUETOOTH_NOT_AVAILABLE", message: "Bluetooth is powered off"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLUETOOTH_NOT_AVAILABLE", message: "Bluetooth is powered off")))
         case .unauthorized:
             print("\(logTag): Bluetooth unauthorized")
-            eventCallback(.Error(code: "BLUETOOTH_UNAUTHORIZED", message: "Bluetooth access not authorized"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLUETOOTH_UNAUTHORIZED", message: "Bluetooth access not authorized")))
         case .unsupported:
             print("\(logTag): Bluetooth unsupported")
-            eventCallback(.Error(code: "BLUETOOTH_NOT_AVAILABLE", message: "Bluetooth is not supported on this device"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLUETOOTH_NOT_AVAILABLE", message: "Bluetooth is not supported on this device")))
         case .resetting:
             print("\(logTag): Bluetooth resetting")
         case .unknown:
@@ -47,7 +47,7 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
         let address = peripheral.identifier.uuidString
         let serviceUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID])?.map { $0.uuidString } ?? []
         print("\(logTag): Found BLE device: \(name) (\(address))")
-        eventCallback(.DiscoveredDevice(
+        eventCallback(BluetoothEvent.discoveredDevice(BluetoothEvent.DiscoveredDevice(
             name: name,
             address: address,
             uuids: serviceUUIDs,
@@ -55,7 +55,7 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
             isBle: true,
             event: nil,
             message: nil
-        ))
+        )))
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -63,35 +63,35 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
         connectedPeripheral = peripheral
         peripheral.delegate = self
         peripheral.discoverServices([serviceUUID])
-        eventCallback(.ReceivedData(data: "BLE Connected"))
+        eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: "BLE Connected")))
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         print("\(logTag): BLE disconnected")
         connectedPeripheral = nil
         targetCharacteristic = nil
-        eventCallback(.ReceivedData(data: "BLE Disconnected"))
+        eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: "BLE Disconnected")))
         if let error = error {
-            eventCallback(.Error(code: "BLE_DISCONNECT_ERROR", message: error.localizedDescription))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_DISCONNECT_ERROR", message: error.localizedDescription)))
         }
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         print("\(logTag): Failed to connect: \(error?.localizedDescription ?? "Unknown error")")
-        eventCallback(.Error(code: "BLE_CONNECT_ERROR", message: error?.localizedDescription ?? "Failed to connect to device"))
+        eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_CONNECT_ERROR", message: error?.localizedDescription ?? "Failed to connect to device")))
     }
     
     // MARK: - CBPeripheralDelegate
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         if let error = error {
             print("\(logTag): Service discovery failed: \(error.localizedDescription)")
-            eventCallback(.Error(code: "BLE_SERVICE_ERROR", message: "Service discovery failed"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_SERVICE_ERROR", message: "Service discovery failed")))
             return
         }
         
         guard let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) else {
             print("\(logTag): Service \(serviceUUID.uuidString) not found")
-            eventCallback(.Error(code: "BLE_SERVICE_ERROR", message: "Required service not found"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_SERVICE_ERROR", message: "Required service not found")))
             return
         }
         
@@ -101,13 +101,13 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         if let error = error {
             print("\(logTag): Characteristic discovery failed: \(error.localizedDescription)")
-            eventCallback(.Error(code: "BLE_CHARACTERISTIC_ERROR", message: "Characteristic discovery failed"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_CHARACTERISTIC_ERROR", message: "Characteristic discovery failed")))
             return
         }
         
         guard let characteristic = service.characteristics?.first(where: { $0.uuid == characteristicUUID }) else {
             print("\(logTag): Characteristic \(characteristicUUID.uuidString) not found")
-            eventCallback(.Error(code: "BLE_CHARACTERISTIC_ERROR", message: "Required characteristic not found"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_CHARACTERISTIC_ERROR", message: "Required characteristic not found")))
             return
         }
         
@@ -121,7 +121,7 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
             print("\(logTag): Descriptor discovery failed: \(error.localizedDescription)")
-            eventCallback(.Error(code: "BLE_DESCRIPTOR_ERROR", message: "Descriptor discovery failed"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_DESCRIPTOR_ERROR", message: "Descriptor discovery failed")))
             return
         }
         
@@ -134,23 +134,23 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
             print("\(logTag): Characteristic read failed: \(error.localizedDescription)")
-            eventCallback(.Error(code: "BLE_READ_ERROR", message: "Characteristic read failed"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_READ_ERROR", message: "Characteristic read failed")))
             return
         }
         
         if let value = characteristic.value, let data = String(data: value, encoding: .utf8) {
             print("\(logTag): Received BLE data: \(data)")
-            eventCallback(.ReceivedData(data: data))
+            eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: data)))
         } else {
             print("\(logTag): Failed to decode characteristic value")
-            eventCallback(.Error(code: "BLE_READ_ERROR", message: "Failed to decode characteristic value"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_READ_ERROR", message: "Failed to decode characteristic value")))
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
             print("\(logTag): Characteristic write failed: \(error.localizedDescription)")
-            eventCallback(.Error(code: "BLE_WRITE_ERROR", message: "Characteristic write failed"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_WRITE_ERROR", message: "Characteristic write failed")))
             return
         }
         print("\(logTag): BLE characteristic write successful")
@@ -159,7 +159,7 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: Error?) {
         if let error = error {
             print("\(logTag): Descriptor write failed: \(error.localizedDescription)")
-            eventCallback(.Error(code: "BLE_DESCRIPTOR_ERROR", message: "Descriptor write failed"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "BLE_DESCRIPTOR_ERROR", message: "Descriptor write failed")))
             return
         }
         print("\(logTag): Descriptor write successful")
@@ -188,8 +188,8 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
             scanTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeout), repeats: false) { [weak self] _ in
                 if self?.isScanning == true {
                     self?.stopScanningInternal()
-                    print("\(logTag): BLE scan stopped due to timeout")
-                    self?.eventCallback(.DiscoveredDevice(
+                    print("\(self?.logTag): BLE scan stopped due to timeout")
+                    self?.eventCallback(BluetoothEvent.discoveredDevice(BluetoothEvent.DiscoveredDevice(
                         name: "",
                         address: "",
                         uuids: [],
@@ -197,7 +197,7 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
                         isBle: true,
                         event: "timeout",
                         message: "BLE scan stopped after \(timeout) seconds"
-                    ))
+                    )))
                 }
             }
         }
@@ -226,15 +226,17 @@ class BluetoothLeManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
         }
         
         let peripherals = centralManager.retrieveConnectedPeripherals(withServices: [serviceUUID])
-        return peripherals.map { peripheral in
-            [
-                "name": peripheral.name ?? "Unknown",
-                "address": peripheral.identifier.uuidString,
-                "uuids": [],
-                "type": "BLE",
-                "isBle": true
-            ]
-        }.also { print("\(logTag): Fetched \($0.count) connected BLE devices") }
+            let devices = peripherals.map { peripheral in
+                [
+                    "name": peripheral.name ?? "Unknown",
+                    "address": peripheral.identifier.uuidString,
+                    "uuids": [],
+                    "type": "BLE",
+                    "isBle": true
+                ]
+            }
+            print("\(logTag): Fetched \(devices.count) connected BLE devices")
+            return devices
     }
     
     func connectToDevice(address: String, result: @escaping FlutterResult) {

@@ -1,14 +1,14 @@
 import UIKit
 import Flutter
 
-@UIApplicationMain
+@main
 @objc class AppDelegate: FlutterAppDelegate {
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         let controller = window?.rootViewController as! FlutterViewController
-        BluetoothPlugin.register(with: controller.registrar(forPlugin: "BluetoothPlugin"))
+        BluetoothPlugin.register(with: controller.registrar(forPlugin: "BluetoothPlugin")!)
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 }

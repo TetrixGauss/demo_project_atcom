@@ -21,14 +21,14 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
     @objc func accessoryDidConnect(notification: Notification) {
         guard let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory else { return }
         print("\(logTag): Accessory connected: \(accessory.name)")
-        eventCallback(.ReceivedData(data: "Classic Connected"))
+        eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: "Classic Connected")))
     }
     
     @objc func accessoryDidDisconnect(notification: Notification) {
         guard let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory else { return }
         print("\(logTag): Accessory disconnected: \(accessory.name)")
         session = nil
-        eventCallback(.ReceivedData(data: "Classic Disconnected"))
+        eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: "Classic Disconnected")))
     }
     
     func startScanning(timeoutSeconds: Int?, result: @escaping FlutterResult) {
@@ -37,7 +37,7 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
         accessories.forEach { accessory in
             let name = accessory.name.isEmpty ? "Unknown" : accessory.name
             print("\(logTag): Found accessory: \(name) (\(accessory.connectionID))")
-            eventCallback(.DiscoveredDevice(
+            eventCallback(BluetoothEvent.discoveredDevice(BluetoothEvent.DiscoveredDevice(
                 name: name,
                 address: "\(accessory.connectionID)",
                 uuids: accessory.protocolStrings,
@@ -45,14 +45,14 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
                 isBle: false,
                 event: nil,
                 message: nil
-            ))
+            )))
         }
         result(nil)
         
         if let timeout = timeoutSeconds, timeout > 0 {
             Timer.scheduledTimer(withTimeInterval: TimeInterval(timeout), repeats: false) { [weak self] _ in
-                print("\(logTag): Classic discovery stopped due to timeout")
-                self?.eventCallback(.DiscoveredDevice(
+                print("\(self?.logTag): Classic discovery stopped due to timeout")
+                self?.eventCallback(BluetoothEvent.discoveredDevice(BluetoothEvent.DiscoveredDevice(
                     name: "",
                     address: "",
                     uuids: [],
@@ -60,7 +60,7 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
                     isBle: false,
                     event: "timeout",
                     message: "Classic discovery stopped after \(timeout) seconds"
-                ))
+                )))
             }
         }
     }
@@ -72,7 +72,7 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
     
     func getPairedDevices() -> [[String: Any]] {
         let accessories = accessoryManager.connectedAccessories.filter { $0.protocolStrings.contains(protocolString) }
-        return accessories.map { accessory in
+        let devices = accessories.map { accessory in
             [
                 "name": accessory.name.isEmpty ? "Unknown" : accessory.name,
                 "address": "\(accessory.connectionID)",
@@ -80,7 +80,9 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
                 "type": "Classic",
                 "isBle": false
             ]
-        }.also { print("\(logTag): Fetched \($0.count) paired Classic devices") }
+        }
+        print("\(logTag): Fetched \(devices.count) paired Classic devices")
+        return devices
     }
     
     func connectToDevice(address: String, result: @escaping FlutterResult) {
@@ -178,7 +180,7 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
             let bytesWritten = keepAlive.withUnsafeBytes { buffer in
                 outputStream.write(buffer.baseAddress!, maxLength: buffer.count)
             }
-            print("\(logTag): Sent keep-alive: \(bytesWritten > 0 ? "Success" : "Failed")")
+            print("\(self?.logTag): Sent keep-alive: \(bytesWritten > 0 ? "Success" : "Failed")")
         }
     }
     
@@ -205,12 +207,12 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
                 let bytesRead = inputStream.read(&buffer, maxLength: buffer.count)
                 if bytesRead > 0, let data = String(bytes: buffer[0..<bytesRead], encoding: .utf8) {
                     print("\(logTag): Received data: \(data)")
-                    eventCallback(.ReceivedData(data: data))
+                    eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: data)))
                 }
             }
         case .errorOccurred:
             print("\(logTag): Stream error")
-            eventCallback(.Error(code: "STREAM_ERROR", message: "Stream error occurred"))
+            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "STREAM_ERROR", message: "Stream error occurred")))
         default:
             break
         }

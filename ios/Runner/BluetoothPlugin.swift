@@ -8,30 +8,30 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     private var receivedDataSink: FlutterEventSink?
     private var pairingStateSink: FlutterEventSink?
     private var pairedDevicesSink: FlutterEventSink?
-    
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = BluetoothPlugin()
-        
+
         let methodChannel = FlutterMethodChannel(name: "com.example/bluetooth", binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: methodChannel)
-        
+
         let discoveredChannel = FlutterEventChannel(name: "com.example/bluetooth_discovered_devices", binaryMessenger: registrar.messenger())
         discoveredChannel.setStreamHandler(instance)
-        
+
         let receivedDataChannel = FlutterEventChannel(name: "com.example/bluetooth_received_data", binaryMessenger: registrar.messenger())
         receivedDataChannel.setStreamHandler(instance)
-        
+
         let pairingStateChannel = FlutterEventChannel(name: "com.example/bluetooth_pairing_state", binaryMessenger: registrar.messenger())
         pairingStateChannel.setStreamHandler(instance)
-        
+
         let pairedDevicesChannel = FlutterEventChannel(name: "com.example/bluetooth_paired_devices", binaryMessenger: registrar.messenger())
         pairedDevicesChannel.setStreamHandler(instance)
     }
-    
+
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let arguments = call.arguments as? [String: Any]
         let isBLE = arguments?["isBLE"] as? Bool ?? false
-        
+
         switch call.method {
         case "startScanning":
             let timeout = arguments?["timeout"] as? Int
@@ -78,7 +78,7 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             result(FlutterMethodNotImplemented)
         }
     }
-    
+
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
         if let channelName = (arguments as? [String: Any])?["channel"] as? String {
             switch channelName {
@@ -97,7 +97,7 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         }
         return nil
     }
-    
+
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
         if let channelName = (arguments as? [String: Any])?["channel"] as? String {
             switch channelName {
@@ -115,7 +115,7 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         }
         return nil
     }
-    
+
     override init() {
         super.init()
         bleManager = BluetoothLeManager { [weak self] event in
@@ -125,21 +125,21 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             self?.handleBluetoothEvent(event)
         }
     }
-    
+
     private func handleBluetoothEvent(_ event: BluetoothEvent) {
         switch event {
-        case .DiscoveredDevice(let device):
+        case .discoveredDevice(let device):
             print("Streaming discovered device: \(device.toDictionary())")
             discoveredSink?(device.toDictionary())
-        case .ReceivedData(let data):
-            print("Streaming received data: \(data)")
-            receivedDataSink?(data)
-        case .Error(let code, let message):
-            print("Streaming error: \(code) - \(message ?? "No message")")
-            discoveredSink?(["event": "error", "code": code, "message": message ?? ""])
+        case .receivedData(let data):
+            print("Streaming received data: \(data.data)")
+            receivedDataSink?(data.data)
+        case .error(let error):
+            print("Streaming error: \(error.code) - \(error.message ?? "No message")")
+            discoveredSink?(["event": "error", "code": error.code, "message": error.message ?? ""])
         }
     }
-    
+
     private func sendPairedDevices() {
         let bleDevices = bleManager?.getPairedDevices() ?? []
         let classicDevices = classicManager?.getPairedDevices() ?? []
@@ -149,7 +149,7 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             pairedDevicesSink?(device)
         }
     }
-    
+
     deinit {
         bleManager?.cleanup()
         classicManager?.cleanup()

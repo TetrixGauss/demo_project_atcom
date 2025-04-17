@@ -2,6 +2,10 @@ import Foundation
 
 // MARK: - Bluetooth Event Types
 enum BluetoothEvent {
+    case discoveredDevice(DiscoveredDevice)
+    case receivedData(ReceivedData)
+    case error(Error)
+
     struct DiscoveredDevice {
         let name: String
         let address: String
@@ -10,7 +14,7 @@ enum BluetoothEvent {
         let isBle: Bool
         let event: String?
         let message: String?
-        
+
         func toDictionary() -> [String: Any] {
             if let event = event, let message = message {
                 return ["event": event, "message": message]
@@ -24,11 +28,11 @@ enum BluetoothEvent {
             ]
         }
     }
-    
+
     struct ReceivedData {
         let data: String
     }
-    
+
     struct Error {
         let code: String
         let message: String?
