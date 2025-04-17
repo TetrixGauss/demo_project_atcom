@@ -46,22 +46,19 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-    <string>We need Bluetooth to connect to devices.</string>
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>bluetooth-central</string>
-        <string>bluetooth-peripheral</string>
-        <string>external-accessory</string>
-    </array>
-    <key>UISupportedExternalAccessoryProtocols</key>
-    <array>
-        <string>com.apple.spp</string> <!-- Replace with your device's protocol string -->
-    </array>
-    <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>We need Bluetooth to connect to devices.</string>
-    <key>UISupportedExternalAccessoryProtocols</key>
-    <array>
-        <string>com.epson.printer</string>
-    </array>
+	<string>We need Bluetooth to connect to devices.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is required for Bluetooth scanning to discover nearby devices.</string>
+	<key>UISupportedExternalAccessoryProtocols</key>
+	<array>
+		<string>com.epson.printer</string>
+		<string>com.epson.escpos</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+		<string>external-accessory</string>
+	</array>
 </dict>
 </plist>

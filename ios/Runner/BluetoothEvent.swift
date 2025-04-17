@@ -3,6 +3,7 @@ import Foundation
 // MARK: - Bluetooth Event Types
 enum BluetoothEvent {
     case discoveredDevice(DiscoveredDevice)
+    case pairedDevice(DiscoveredDevice)
     case receivedData(ReceivedData)
     case error(Error)
 

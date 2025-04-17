@@ -153,19 +153,23 @@ class BluetoothPlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamHan
             "sendData" -> {
                 val address = call.argument<String>("address")
                 val data = call.argument<String>("data")
+                val isBle = call.argument<bool>("isBle") ?: false
                 if (address != null && data != null) {
-                    bluetoothClassicManager?.sendReceipt(address, data, result)
-                    bluetoothLeManager?.sendData(data, object : Result {
-                        override fun success(res: Any?) {
-                            result.success(null)
-                        }
-                        override fun error(code: String, message: String?, details: Any?) {
-                            result.error(code, message, details)
-                        }
-                        override fun notImplemented() {
-                            result.notImplemented()
-                        }
-                    })
+                    if (isBle) {
+                        bluetoothLeManager?.sendData(data, object : Result {
+                            override fun success(res: Any?) {
+                                result.success(null)
+                            }
+                            override fun error(code: String, message: String?, details: Any?) {
+                                result.error(code, message, details)
+                            }
+                            override fun notImplemented() {
+                                result.notImplemented()
+                            }
+                        })
+                    } else {
+                        bluetoothClassicManager?.sendReceipt(address, data, result)
+                    }
                 } else {
                     result.error("INVALID_ARGUMENT", "Address and data are required", null)
                 }

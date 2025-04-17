@@ -1,31 +1,32 @@
 import Flutter
-import Foundation
+import UIKit
+import ExternalAccessory
+import CoreBluetooth
 
 public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     private var bleManager: BluetoothLeManager?
     private var classicManager: BluetoothClassicManager?
     private var discoveredSink: FlutterEventSink?
-    private var receivedDataSink: FlutterEventSink?
-    private var pairingStateSink: FlutterEventSink?
-    private var pairedDevicesSink: FlutterEventSink?
+    private var pairedSink: FlutterEventSink?
+    private var discoveredPendingEvents: [BluetoothEvent] = []
+    private var pairedPendingEvents: [BluetoothEvent] = []
+
+    override init() {
+        super.init()
+        bleManager = BluetoothLeManager { [weak self] event in
+            self?.handleBluetoothEvent(event, isPaired: false)
+        }
+        classicManager = BluetoothClassicManager { [weak self] event in
+            self?.handleBluetoothEvent(event, isPaired: true)
+        }
+    }
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let instance = BluetoothPlugin()
-
-        let methodChannel = FlutterMethodChannel(name: "com.example/bluetooth", binaryMessenger: registrar.messenger())
-        registrar.addMethodCallDelegate(instance, channel: methodChannel)
-
+        let channel = FlutterMethodChannel(name: "com.example/bluetooth", binaryMessenger: registrar.messenger())
         let discoveredChannel = FlutterEventChannel(name: "com.example/bluetooth_discovered_devices", binaryMessenger: registrar.messenger())
+        let instance = BluetoothPlugin()
+        registrar.addMethodCallDelegate(instance, channel: channel)
         discoveredChannel.setStreamHandler(instance)
-
-        let receivedDataChannel = FlutterEventChannel(name: "com.example/bluetooth_received_data", binaryMessenger: registrar.messenger())
-        receivedDataChannel.setStreamHandler(instance)
-
-        let pairingStateChannel = FlutterEventChannel(name: "com.example/bluetooth_pairing_state", binaryMessenger: registrar.messenger())
-        pairingStateChannel.setStreamHandler(instance)
-
-        let pairedDevicesChannel = FlutterEventChannel(name: "com.example/bluetooth_paired_devices", binaryMessenger: registrar.messenger())
-        pairedDevicesChannel.setStreamHandler(instance)
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -38,27 +39,47 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             if isBLE {
                 bleManager?.startScanning(timeoutSeconds: timeout, result: result)
             } else {
-                classicManager?.startScanning(timeoutSeconds: timeout, result: result)
+                classicManager?.startScanning(result: result)
             }
+
         case "stopScanning":
-            bleManager?.stopScanning(result: { _ in
-                self.classicManager?.stopScanning(result: result)
-            })
-        case "pairDevice":
-            result(FlutterError(code: "NOT_SUPPORTED", message: "Pairing not supported on iOS", details: nil))
-        case "connectToDevice":
-            let address = arguments?["address"] as? String
-            if isBLE, let address = address {
-                bleManager?.connectToDevice(address: address, result: result)
-            } else if let address = address {
-                classicManager?.connectToDevice(address: address, result: result)
+            if isBLE {
+                bleManager?.stopScanning(result: result)
             } else {
-                result(FlutterError(code: "INVALID_ARGUMENT", message: "Device address is required", details: nil))
+                classicManager?.stopScanning(result: result)
             }
+
+        case "pairDevice":
+            let deviceName = arguments?["deviceName"] as? String ?? ""
+            if isBLE {
+                result(FlutterError(code: "NOT_SUPPORTED", message: "Pairing not supported for BLE", details: nil))
+            } else {
+                classicManager?.pairDevice(deviceName: deviceName, result: result)
+            }
+
+        case "getPairedDevices":
+            if isBLE {
+                result([]) // BLE paired devices not implemented
+            } else {
+                let pairedDevices = classicManager?.getPairedDevices() ?? []
+                result(pairedDevices)
+            }
+
+        case "connectToDevice":
+            let address = arguments?["address"] as? String ?? ""
+            if isBLE {
+                bleManager?.connectToDevice(address: address, result: result)
+            } else {
+                classicManager?.connectToDevice(address: address, result: result)
+            }
+
         case "disconnect":
-            bleManager?.disconnect(result: { _ in
-                self.classicManager?.disconnect(result: result)
-            })
+            if isBLE {
+                bleManager?.disconnect(result: result)
+            } else {
+                classicManager?.disconnect(result: result)
+            }
+
         case "sendData":
             let data = arguments?["data"] as? String
             if isBLE, let data = data {
@@ -68,101 +89,125 @@ public class BluetoothPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             } else {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "Data is required", details: nil))
             }
+
         case "checkStatus":
             if isBLE {
                 bleManager?.checkStatus(result: result)
             } else {
                 classicManager?.checkStatus(result: result)
             }
+
+        case "checkBluetoothState":
+            let state = bleManager?.getBluetoothState() ?? .unknown
+            result(state == .poweredOn ? "poweredOn" : "poweredOff")
+
+        case "checkLocationState":
+            result("authorizedWhenInUse") // Simplified for demo
+
         default:
             result(FlutterMethodNotImplemented)
         }
     }
 
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-        if let channelName = (arguments as? [String: Any])?["channel"] as? String {
-            switch channelName {
-            case "com.example/bluetooth_discovered_devices":
-                discoveredSink = events
-            case "com.example/bluetooth_received_data":
-                receivedDataSink = events
-            case "com.example/bluetooth_pairing_state":
-                pairingStateSink = events
-            case "com.example/bluetooth_paired_devices":
-                pairedDevicesSink = events
-                sendPairedDevices()
-            default:
-                return FlutterError(code: "INVALID_CHANNEL", message: "Unknown channel", details: nil)
+        let channel = arguments as? String ?? ""
+        print("onListen called for \(channel) with arguments: \(String(describing: arguments))")
+        if channel == "com.example/bluetooth_discovered_devices" {
+            discoveredSink = events
+            print("Discovered sink set, processing \(discoveredPendingEvents.count) queued events")
+            let eventsToProcess = discoveredPendingEvents
+            discoveredPendingEvents.removeAll()
+            for event in eventsToProcess {
+                if case .discoveredDevice(let device) = event {
+                    print("Sending queued discovered device: \(device.name) (\(device.address)), isBLE: \(device.isBle)")
+                    events(device.toDictionary())
+                }
+            }
+        } else if channel == "com.example/bluetooth_paired_devices" {
+            pairedSink = events
+            print("Paired sink set, streaming paired devices and processing \(pairedPendingEvents.count) queued events")
+            if let pairedDevices = classicManager?.getPairedDevices() {
+                for device in pairedDevices {
+                    let pairedDevice = BluetoothEvent.DiscoveredDevice(
+                        name: device["name"] as? String ?? "Unknown",
+                        address: device["address"] as? String ?? "Unknown",
+                        uuids: device["uuids"] as? [String] ?? [],
+                        type: "Classic",
+                        isBle: false,
+                        event: "paired",
+                        message: nil
+                    )
+                    print("Streaming paired device: \(pairedDevice.name) (\(pairedDevice.address))")
+                    events(pairedDevice.toDictionary())
+                }
+            }
+            let eventsToProcess = pairedPendingEvents
+            pairedPendingEvents.removeAll()
+            for event in eventsToProcess {
+                if case .pairedDevice(let device) = event {
+                    print("Sending queued paired device: \(device.name) (\(device.address)), isBLE: \(device.isBle)")
+                    events(device.toDictionary())
+                }
             }
         }
         return nil
     }
 
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
-        if let channelName = (arguments as? [String: Any])?["channel"] as? String {
-            switch channelName {
-            case "com.example/bluetooth_discovered_devices":
-                discoveredSink = nil
-            case "com.example/bluetooth_received_data":
-                receivedDataSink = nil
-            case "com.example/bluetooth_pairing_state":
-                pairingStateSink = nil
-            case "com.example/bluetooth_paired_devices":
-                pairedDevicesSink = nil
-            default:
-                return FlutterError(code: "INVALID_CHANNEL", message: "Unknown channel", details: nil)
-            }
+        let channel = arguments as? String ?? ""
+        print("onCancel called for \(channel)")
+        if channel == "com.example/bluetooth_discovered_devices" {
+            discoveredSink = nil
+        } else if channel == "com.example/bluetooth_paired_devices" {
+            pairedSink = nil
         }
         return nil
     }
 
-    override init() {
-        super.init()
-        bleManager = BluetoothLeManager { [weak self] event in
-            self?.handleBluetoothEvent(event)
-        }
-        classicManager = BluetoothClassicManager(protocolString: "com.epson.printer") { [weak self] event in
-            self?.handleBluetoothEvent(event)
-        }
-    }
-
-    private func handleBluetoothEvent(_ event: BluetoothEvent) {
+    func handleBluetoothEvent(_ event: BluetoothEvent, isPaired: Bool) {
         switch event {
         case .discoveredDevice(let device):
-            print("Streaming discovered device: \(device.toDictionary())")
-            discoveredSink?(device.toDictionary())
+
+            print("Sending device to discovered sink: \(device.name)")
+            if let sink = discoveredSink {
+                sink(device.toDictionary())
+            } else {
+                print("Discovered sink is nil, unable to send device")
+                discoveredPendingEvents.append(event)
+            }
+
+        case .pairedDevice(let device):
+
+            print("Sending device to paired sink: \(device.name)")
+            if let sink = pairedSink {
+                sink(device.toDictionary())
+            } else {
+                print("Discovered sink is nil, unable to send device")
+                pairedPendingEvents.append(event)
+            }
+
+
         case .receivedData(let data):
-            print("Streaming received data: \(data.data)")
-            receivedDataSink?(data.data)
+            print("Received data: \(data.data)")
+            let sink = isPaired ? pairedSink : discoveredSink
+            if let sink = sink {
+                print("Sending received data to \(isPaired ? "paired" : "discovered") sink")
+                sink(data.data)
+            } else {
+                print("\(isPaired ? "Paired" : "Discovered") sink is nil, ignoring received data")
+            }
         case .error(let error):
-            print("Streaming error: \(error.code) - \(error.message ?? "No message")")
-            discoveredSink?(["event": "error", "code": error.code, "message": error.message ?? ""])
+            print("Error occurred: \(error.code), message: \(String(describing: error.message))")
+            let sink = isPaired ? pairedSink : discoveredSink
+            if let sink = sink {
+                print("Sending error to \(isPaired ? "paired" : "discovered") sink")
+                sink(FlutterError(code: error.code, message: error.message, details: nil))
+            } else {
+                print("\(isPaired ? "Paired" : "Discovered") sink is nil, ignoring error")
+            }
+        default:
+            print("Unknown event type")
         }
-    }
 
-    private func sendPairedDevices() {
-        let bleDevices = bleManager?.getPairedDevices() ?? []
-        let classicDevices = classicManager?.getPairedDevices() ?? []
-        let allDevices = (bleDevices + classicDevices).distinct(by: { $0["address"] as? String })
-        allDevices.forEach { device in
-            print("Streaming paired device: \(device)")
-            pairedDevicesSink?(device)
-        }
-    }
-
-    deinit {
-        bleManager?.cleanup()
-        classicManager?.cleanup()
-    }
-}
-
-// Extension to mimic Kotlin's distinctBy
-extension Array {
-    func distinct(by key: (Element) -> Any?) -> [Element] {
-        var seen = Set<AnyHashable>()
-        return filter { element in
-            guard let keyValue = key(element) as? AnyHashable else { return false }
-            return seen.insert(keyValue).inserted
-        }
     }
 }

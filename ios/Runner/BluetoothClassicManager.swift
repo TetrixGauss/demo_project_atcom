@@ -1,104 +1,110 @@
-import ExternalAccessory
 import Foundation
+import ExternalAccessory
 
-class BluetoothClassicManager: NSObject, StreamDelegate {
-    private let accessoryManager = EAAccessoryManager.shared()
+class BluetoothClassicManager: NSObject {
+    private var eventCallback: (BluetoothEvent) -> Void
+    private var connectedAccessory: EAAccessory?
     private var session: EASession?
-    private let protocolString: String // e.g., "com.epson.printer"
-    private let eventCallback: (BluetoothEvent) -> Void
-    private let logTag = "BluetoothClassicManager"
-    private var keepAliveTimer: Timer?
-    
-    init(protocolString: String, eventCallback: @escaping (BluetoothEvent) -> Void) {
-        self.protocolString = protocolString
+    private var sendDataResult: FlutterResult?
+
+    init(eventCallback: @escaping (BluetoothEvent) -> Void) {
         self.eventCallback = eventCallback
         super.init()
-        NotificationCenter.default.addObserver(self, selector: #selector(accessoryDidConnect), name: .EAAccessoryDidConnect, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(accessoryDidDisconnect), name: .EAAccessoryDidDisconnect, object: nil)
-        accessoryManager.registerForLocalNotifications()
+        registerForNotifications()
     }
-    
-    @objc func accessoryDidConnect(notification: Notification) {
-        guard let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory else { return }
-        print("\(logTag): Accessory connected: \(accessory.name)")
-        eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: "Classic Connected")))
-    }
-    
-    @objc func accessoryDidDisconnect(notification: Notification) {
-        guard let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory else { return }
-        print("\(logTag): Accessory disconnected: \(accessory.name)")
-        session = nil
-        eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: "Classic Disconnected")))
-    }
-    
-    func startScanning(timeoutSeconds: Int?, result: @escaping FlutterResult) {
-        print("\(logTag): Starting Classic Bluetooth discovery")
-        let accessories = accessoryManager.connectedAccessories.filter { $0.protocolStrings.contains(protocolString) }
-        accessories.forEach { accessory in
-            let name = accessory.name.isEmpty ? "Unknown" : accessory.name
-            print("\(logTag): Found accessory: \(name) (\(accessory.connectionID))")
-            eventCallback(BluetoothEvent.discoveredDevice(BluetoothEvent.DiscoveredDevice(
-                name: name,
-                address: "\(accessory.connectionID)",
-                uuids: accessory.protocolStrings,
-                type: "Classic",
-                isBle: false,
-                event: nil,
-                message: nil
-            )))
+
+    func startScanning(result: @escaping FlutterResult) {
+        print("Started Classic Bluetooth scanning for all devices")
+        // List already paired accessories
+        let accessories = EAAccessoryManager.shared().connectedAccessories
+        print("Initial paired accessories: \(accessories.map { "\($0.name): \($0.protocolStrings)" })")
+        for accessory in accessories {
+            notifyAccessoryConnected(accessory)
         }
-        result(nil)
-        
-        if let timeout = timeoutSeconds, timeout > 0 {
-            Timer.scheduledTimer(withTimeInterval: TimeInterval(timeout), repeats: false) { [weak self] _ in
-                print("\(self?.logTag): Classic discovery stopped due to timeout")
-                self?.eventCallback(BluetoothEvent.discoveredDevice(BluetoothEvent.DiscoveredDevice(
-                    name: "",
-                    address: "",
-                    uuids: [],
-                    type: "",
-                    isBle: false,
-                    event: "timeout",
-                    message: "Classic discovery stopped after \(timeout) seconds"
-                )))
+        // Show picker for all discoverable devices
+        EAAccessoryManager.shared().showBluetoothAccessoryPicker(withNameFilter: nil) { error in
+            if let error = error {
+                print("Bluetooth picker error: \(error.localizedDescription)")
+                let nsError = error as NSError
+                switch nsError.code {
+                case EABluetoothAccessoryPickerError.alreadyConnected.rawValue:
+                    print("Accessory already connected, proceeding")
+                    result(nil)
+                case EABluetoothAccessoryPickerError.resultCancelled.rawValue:
+                    print("Pairing cancelled by user")
+                    result(FlutterError(code: "PICKER_CANCELLED", message: "Pairing cancelled by user", details: nil))
+                    return
+                case EABluetoothAccessoryPickerError.resultFailed.rawValue:
+                    print("Pairing failed")
+                    result(FlutterError(code: "PICKER_FAILED", message: "Failed to pair device", details: error.localizedDescription))
+                    return
+                default:
+                    print("Unknown picker error: \(nsError.code)")
+                    result(FlutterError(code: "PICKER_ERROR", message: error.localizedDescription, details: nil))
+                    return
+                }
             }
+            // Stream newly paired accessories
+            let updatedAccessories = EAAccessoryManager.shared().connectedAccessories
+            print("Paired accessories after picker: \(updatedAccessories.map { "\($0.name): \($0.protocolStrings)" })")
+            for accessory in updatedAccessories {
+                self.notifyAccessoryConnected(accessory)
+            }
+            result(nil)
         }
     }
-    
+
+    func pairDevice(deviceName: String, result: @escaping FlutterResult) {
+        print("Initiating pairing with device: \(deviceName)")
+        let predicate = NSPredicate(format: "name ==[cd] %@", deviceName)
+        EAAccessoryManager.shared().showBluetoothAccessoryPicker(withNameFilter: predicate) { error in
+            if let error = error {
+                print("Pairing error for \(deviceName): \(error.localizedDescription)")
+                let nsError = error as NSError
+                switch nsError.code {
+                case EABluetoothAccessoryPickerError.alreadyConnected.rawValue:
+                    print("Device \(deviceName) already paired")
+                    if let accessory = EAAccessoryManager.shared().connectedAccessories.first(where: { $0.name == deviceName }) {
+                        self.notifyAccessoryConnected(accessory)
+                    }
+                    result(nil)
+                case EABluetoothAccessoryPickerError.resultCancelled.rawValue:
+                    print("Pairing cancelled for \(deviceName)")
+                    result(FlutterError(code: "PICKER_CANCELLED", message: "Pairing cancelled by user", details: nil))
+                case EABluetoothAccessoryPickerError.resultFailed.rawValue:
+                    print("Pairing failed for \(deviceName)")
+                    result(FlutterError(code: "PICKER_FAILED", message: "Failed to pair \(deviceName)", details: error.localizedDescription))
+                default:
+                    print("Unknown pairing error for \(deviceName): \(nsError.code)")
+                    result(FlutterError(code: "PICKER_ERROR", message: error.localizedDescription, details: nil))
+                }
+                return
+            }
+            if let accessory = EAAccessoryManager.shared().connectedAccessories.first(where: { $0.name == deviceName }) {
+                print("Successfully paired \(deviceName)")
+                self.notifyAccessoryConnected(accessory)
+            } else {
+                print("Paired device \(deviceName) not found in connected accessories")
+            }
+            result(nil)
+        }
+    }
+
     func stopScanning(result: @escaping FlutterResult) {
-        print("\(logTag): Stopping Classic Bluetooth discovery")
+        print("Stopped Classic Bluetooth scanning")
         result(nil)
     }
-    
-    func getPairedDevices() -> [[String: Any]] {
-        let accessories = accessoryManager.connectedAccessories.filter { $0.protocolStrings.contains(protocolString) }
-        let devices = accessories.map { accessory in
-            [
-                "name": accessory.name.isEmpty ? "Unknown" : accessory.name,
-                "address": "\(accessory.connectionID)",
-                "uuids": accessory.protocolStrings,
-                "type": "Classic",
-                "isBle": false
-            ]
-        }
-        print("\(logTag): Fetched \(devices.count) paired Classic devices")
-        return devices
-    }
-    
+
     func connectToDevice(address: String, result: @escaping FlutterResult) {
-        guard let connectionID = Int(address) else {
-            print("\(logTag): Invalid connection ID: \(address)")
-            result(FlutterError(code: "INVALID_ADDRESS", message: "Invalid connection ID", details: nil))
+        guard let accessory = EAAccessoryManager.shared().connectedAccessories.first(where: { $0.serialNumber == address || $0.name == address }) else {
+            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Accessory not found for address: \(address)", details: nil))
             return
         }
-        
-        let accessories = accessoryManager.connectedAccessories.filter { $0.connectionID == connectionID && $0.protocolStrings.contains(protocolString) }
-        guard let accessory = accessories.first else {
-            print("\(logTag): Accessory not found for ID: \(address)")
-            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Accessory not found", details: nil))
+        guard let protocolString = accessory.protocolStrings.first else {
+            result(FlutterError(code: "NO_PROTOCOL", message: "No protocol strings available for accessory", details: nil))
             return
         }
-        
+        connectedAccessory = accessory
         session = EASession(accessory: accessory, forProtocol: protocolString)
         if let session = session {
             session.inputStream?.delegate = self
@@ -107,114 +113,146 @@ class BluetoothClassicManager: NSObject, StreamDelegate {
             session.outputStream?.delegate = self
             session.outputStream?.schedule(in: .main, forMode: .default)
             session.outputStream?.open()
-            print("\(logTag): Connected to accessory: \(accessory.name)")
-            startKeepAlive()
+            print("Connected to accessory: \(accessory.name) (\(accessory.serialNumber))")
             result(nil)
         } else {
-            print("\(logTag): Failed to create session")
-            result(FlutterError(code: "CONNECT_ERROR", message: "Failed to create session", details: nil))
+            result(FlutterError(code: "SESSION_FAILED", message: "Failed to create session for accessory", details: nil))
         }
     }
-    
+
     func disconnect(result: @escaping FlutterResult) {
-        print("\(logTag): Disconnecting Classic Bluetooth")
-        stopKeepAlive()
-        session?.inputStream?.close()
-        session?.outputStream?.close()
-        session = nil
+        if let session = session {
+            session.inputStream?.close()
+            session.inputStream?.remove(from: .main, forMode: .default)
+            session.outputStream?.close()
+            session.outputStream?.remove(from: .main, forMode: .default)
+            self.session = nil
+        }
+        connectedAccessory = nil
+        print("Disconnected Classic Bluetooth accessory")
         result(nil)
     }
-    
+
     func sendReceipt(data: String, result: @escaping FlutterResult) {
-        guard let outputStream = session?.outputStream, outputStream.hasSpaceAvailable else {
-            print("\(logTag): Not connected or output stream unavailable")
-            result(FlutterError(code: "NOT_CONNECTED", message: "Not connected to accessory", details: nil))
+        guard let session = session, let outputStream = session.outputStream, outputStream.hasSpaceAvailable else {
+            result(FlutterError(code: "NOT_CONNECTED", message: "Not connected or output stream unavailable", details: nil))
             return
         }
-        
-        let initialize = Data([0x1B, 0x40])
-        let centerAlign = Data([0x1B, 0x61, 0x01])
-        let printText = data.data(using: .ascii) ?? Data()
-        let lineFeed = Data([0x0A])
-        let cutPaper = Data([0x1D, 0x56, 0x00])
-        let escPosData = initialize + centerAlign + printText + lineFeed + cutPaper
-        
-        let bytesWritten = escPosData.withUnsafeBytes { buffer in
+        guard let dataBytes = data.data(using: .ascii) else {
+            result(FlutterError(code: "INVALID_DATA", message: "Failed to convert data to bytes", details: nil))
+            return
+        }
+        sendDataResult = result
+        let bytesWritten = dataBytes.withUnsafeBytes { buffer in
             outputStream.write(buffer.baseAddress!, maxLength: buffer.count)
         }
-        
         if bytesWritten > 0 {
-            print("\(logTag): Sent ESC/POS data: \(data)")
+            print("Sent data to accessory: \(dataBytes.hexString)")
             result(nil)
         } else {
-            print("\(logTag): Failed to send data")
-            result(FlutterError(code: "SEND_ERROR", message: "Failed to send data", details: nil))
+            result(FlutterError(code: "WRITE_FAILED", message: "Failed to write data to output stream", details: nil))
         }
     }
-    
+
     func checkStatus(result: @escaping FlutterResult) {
-        guard let outputStream = session?.outputStream, outputStream.hasSpaceAvailable else {
-            print("\(logTag): Not connected or output stream unavailable")
-            result(FlutterError(code: "NOT_CONNECTED", message: "Not connected to accessory", details: nil))
-            return
-        }
-        
-        let statusRequest = Data([0x1B, 0x76])
-        let bytesWritten = statusRequest.withUnsafeBytes { buffer in
-            outputStream.write(buffer.baseAddress!, maxLength: buffer.count)
-        }
-        
-        if bytesWritten > 0 {
-            print("\(logTag): Initiated status check")
-            result(["online": true, "paperOut": false])
-        } else {
-            print("\(logTag): Failed to initiate status check")
-            result(FlutterError(code: "STATUS_ERROR", message: "Failed to check status", details: nil))
+        result(connectedAccessory != nil ? "CONNECTED" : "DISCONNECTED")
+    }
+
+    func getPairedDevices() -> [[String: Any]] {
+        let accessories = EAAccessoryManager.shared().connectedAccessories
+        print("Listing paired devices: \(accessories.map { "\($0.name): \($0.protocolStrings)" })")
+        return accessories.map { accessory in
+            [
+                "name": accessory.name,
+                "address": accessory.serialNumber.isEmpty ? accessory.name : accessory.serialNumber,
+                "uuids": accessory.protocolStrings,
+                "type": "Classic",
+                "isBle": false
+            ]
         }
     }
-    
-    private func startKeepAlive() {
-        keepAliveTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
-            guard let outputStream = self?.session?.outputStream, outputStream.hasSpaceAvailable else { return }
-            let keepAlive = Data([0x1B, 0x76])
-            let bytesWritten = keepAlive.withUnsafeBytes { buffer in
-                outputStream.write(buffer.baseAddress!, maxLength: buffer.count)
-            }
-            print("\(self?.logTag): Sent keep-alive: \(bytesWritten > 0 ? "Success" : "Failed")")
-        }
-    }
-    
-    private func stopKeepAlive() {
-        keepAliveTimer?.invalidate()
-        keepAliveTimer = nil
-    }
-    
+
     func cleanup() {
-        print("\(logTag): Cleaning up Classic Bluetooth")
-        stopKeepAlive()
-        session?.inputStream?.close()
-        session?.outputStream?.close()
-        session = nil
+        disconnect(result: { _ in })
         NotificationCenter.default.removeObserver(self)
-        accessoryManager.unregisterForLocalNotifications()
     }
-    
+
+    private func registerForNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(accessoryDidConnect),
+            name: .EAAccessoryDidConnect,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(accessoryDidDisconnect),
+            name: .EAAccessoryDidDisconnect,
+            object: nil
+        )
+        EAAccessoryManager.shared().registerForLocalNotifications()
+    }
+
+    @objc func accessoryDidConnect(notification: Notification) {
+        guard let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory else { return }
+        print("Accessory paired: \(accessory.name) (\(accessory.serialNumber)), protocols: \(accessory.protocolStrings)")
+        notifyAccessoryConnected(accessory)
+    }
+
+    @objc func accessoryDidDisconnect(notification: Notification) {
+        guard let accessory = notification.userInfo?[EAAccessoryKey] as? EAAccessory else { return }
+        print("Accessory unpaired: \(accessory.name) (\(accessory.serialNumber))")
+        if connectedAccessory?.serialNumber == accessory.serialNumber {
+            disconnect(result: { _ in })
+        }
+        let device = BluetoothEvent.DiscoveredDevice(
+            name: accessory.name,
+            address: accessory.serialNumber.isEmpty ? accessory.name : accessory.serialNumber,
+            uuids: accessory.protocolStrings,
+            type: "Classic",
+            isBle: false,
+            event: "disconnected",
+            message: nil
+        )
+        eventCallback(.discoveredDevice(device))
+    }
+
+    private func notifyAccessoryConnected(_ accessory: EAAccessory) {
+        let address = accessory.serialNumber.isEmpty ? accessory.name : accessory.serialNumber
+        let device = BluetoothEvent.DiscoveredDevice(
+            name: accessory.name,
+            address: address,
+            uuids: accessory.protocolStrings,
+            type: "Classic",
+            isBle: false,
+            event: "paired",
+            message: nil
+        )
+        print("Notifying paired accessory: \(device.name) (\(device.address))")
+        eventCallback(.discoveredDevice(device))
+    }
+}
+
+extension BluetoothClassicManager: StreamDelegate {
     func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
         switch eventCode {
+        case .openCompleted:
+            print("Stream opened for accessory: \(connectedAccessory?.name ?? "Unknown")")
         case .hasBytesAvailable:
-            if let inputStream = aStream as? InputStream {
-                var buffer = [UInt8](repeating: 0, count: 1024)
-                let bytesRead = inputStream.read(&buffer, maxLength: buffer.count)
-                if bytesRead > 0, let data = String(bytes: buffer[0..<bytesRead], encoding: .utf8) {
-                    print("\(logTag): Received data: \(data)")
-                    eventCallback(BluetoothEvent.receivedData(BluetoothEvent.ReceivedData(data: data)))
-                }
-            }
+            print("Data available from accessory")
         case .errorOccurred:
-            print("\(logTag): Stream error")
-            eventCallback(BluetoothEvent.error(BluetoothEvent.Error(code: "STREAM_ERROR", message: "Stream error occurred")))
+            print("Stream error for accessory: \(connectedAccessory?.name ?? "Unknown")")
+        case .endEncountered:
+            print("Stream ended for accessory: \(connectedAccessory?.name ?? "Unknown")")
+            disconnect(result: { _ in })
         default:
             break
         }
+    }
+}
+
+extension Data {
+    var hexString: String {
+        return map { String(format: "%02x", $0) }.joined()
     }
 }

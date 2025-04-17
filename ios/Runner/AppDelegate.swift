@@ -9,6 +9,7 @@ import Flutter
     ) -> Bool {
         let controller = window?.rootViewController as! FlutterViewController
         BluetoothPlugin.register(with: controller.registrar(forPlugin: "BluetoothPlugin")!)
+        GeneratedPluginRegistrant.register(with: self)
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 }

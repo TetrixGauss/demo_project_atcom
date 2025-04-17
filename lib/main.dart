@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await BluetoothService.instance.requestBluetoothPermissions();
+  await BluetoothService.instance.requestPermissions();
   // await BluetoothService.initBluetooth();
   runApp(const MyApp());
 }
@@ -40,7 +40,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isBLE = false;
 
   Future<void> _incrementCounter() async {
-    BluetoothService.instance.startScanning();
+    BluetoothService.instance.startScanning(isBLE: isBLE);
     showDialog(
         barrierDismissible: false,
         context: context,
@@ -71,7 +71,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           return ListTile(
                             title: Text("Device ${device.name} - ${device.address} - ${device.type}"),
                             onTap: () async {
-                              await BluetoothService.instance.pairDevice(device.address);
+                              await BluetoothService.instance.pairDevice(device);
                               print("Device tapped: ${device.name}");
                               print("Device address: ${device.address}");
                               print("Device UUIDs: ${device.uuids}");
@@ -98,7 +98,7 @@ class _MyHomePageState extends State<MyHomePage> {
               TextButton(
                 onPressed: () async {
                   await BluetoothService.instance.stopScanning();
-                  await BluetoothService.instance.startScanning();
+                  BluetoothService.instance.startScanning(isBLE: isBLE);
                 },
                 child: const Text("ReScan"),
               ),
@@ -118,19 +118,24 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            StreamBuilder(
-                stream: BluetoothService.instance.pairingStateStream,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {}
-                  return Flexible(child: Text(snapshot.data.toString()));
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text("Is BLE: $isBLE"),
+                Switch(
+                    value: isBLE, onChanged: (value) {
+                  setState(() {
+                    isBLE = value;
+                  });
                 }),
+              ],
+            ),
+            // StreamBuilder(
+            //     stream: BluetoothService.instance.pairingStateStream,
+            //     builder: (context, snapshot) {
+            //       if (!snapshot.hasData) {}
+            //       return Flexible(child: Text(snapshot.data.toString()));
+            //     }),
             ValueListenableBuilder(
                 valueListenable: BluetoothService.instance.deviceBondedNotifier,
                 builder: (_, value, __) {
@@ -159,8 +164,8 @@ class _MyHomePageState extends State<MyHomePage> {
                             value.uuids.forEach((element) {
                               print("UUID: $element");
                             });
-                            await BluetoothService.instance.sendData(value.address, "Hello from Flutter ${DateTime.now()}");
-                            await BluetoothService.instance.sendData(value.address, "Nikooooooooo");
+                            await BluetoothService.instance.sendData(value.address, "Hello from Flutter ${DateTime.now()}", isBle: isBLE);
+                            await BluetoothService.instance.sendData(value.address, "Nikooooooooo", isBle: isBLE);
                           },
                           child: Text("Send Data"),
                         ),
@@ -169,35 +174,35 @@ class _MyHomePageState extends State<MyHomePage> {
                   }
                   return const SizedBox.shrink();
                 }),
-            StreamBuilder(
-                stream: BluetoothService.instance.receivedDataStream,
-                builder: (context, snapshot) {
-                  return Flexible(child: Text(snapshot.data.toString()));
-                }),
-            StreamBuilder<List<Device>>(
-                stream: BluetoothService.instance.pairedDevicesStream,
-                builder: (context, snapshot) {
-                  final devices = snapshot.data ?? [];
-                  if (devices.isEmpty) {
-                    return const Text("No devices paired");
-                  } else {
-                    final List<Device> devices = snapshot.data!;
-                    print("Devices: $devices");
-                    return ListView.builder(
-                      shrinkWrap: true,
-                      itemBuilder: (_, index) {
-                        Device device = devices[index];
-                        return ListTile(
-                          title: Text("Device ${device.name} - ${device.address} - ${device.type}"),
-                          onTap: () async {
-                            await BluetoothService.instance.connectToDevice(isBLE, device.address, "");
-                          },
-                        );
-                      },
-                      itemCount: devices.length, // Replace with actual device count
-                    );
-                  }
-                }),
+            // StreamBuilder(
+            //     stream: BluetoothService.instance.receivedDataStream,
+            //     builder: (context, snapshot) {
+            //       return Flexible(child: Text(snapshot.data.toString()));
+            //     }),
+            // StreamBuilder<List<Device>>(
+            //     stream: BluetoothService.instance.pairedDevicesStream,
+            //     builder: (context, snapshot) {
+            //       final devices = snapshot.data ?? [];
+            //       if (devices.isEmpty) {
+            //         return const Text("No devices paired");
+            //       } else {
+            //         final List<Device> devices = snapshot.data!;
+            //         print("Devices: $devices");
+            //         return ListView.builder(
+            //           shrinkWrap: true,
+            //           itemBuilder: (_, index) {
+            //             Device device = devices[index];
+            //             return ListTile(
+            //               title: Text("Device ${device.name} - ${device.address} - ${device.type}"),
+            //               onTap: () async {
+            //                 await BluetoothService.instance.connectToDevice(isBLE, device.address, "");
+            //               },
+            //             );
+            //           },
+            //           itemCount: devices.length, // Replace with actual device count
+            //         );
+            //       }
+            //     }),
           ],
         ),
       ),

@@ -100,6 +100,7 @@
 //   }
 // }
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -125,26 +126,73 @@ class BluetoothService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> requestBluetoothPermissions() async {
-    if (await Permission.bluetooth.isGranted && await Permission.bluetoothScan.isGranted && await Permission.bluetoothConnect.isGranted) {
-      print("Bluetooth permissions already granted.");
-      return;
-    }
-
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse, // For scanning on older Android versions
-    ].request();
-
-    statuses.forEach((permission, status) {
-      if (status.isGranted) {
-        print("$permission granted.");
-      } else {
-        print("$permission denied.");
+  Future<bool> requestPermissions() async {
+    try {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.bluetooth,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
+        Permission.location,
+        Permission.locationAlways,
+      ].request();
+      bool bluetoothOk = statuses[Permission.bluetooth]!.isGranted ||
+          statuses[Permission.bluetoothScan]!.isGranted ||
+          statuses[Permission.bluetoothConnect]!.isGranted;
+      bool locationOk = statuses[Permission.locationWhenInUse]!.isGranted ||
+          statuses[Permission.locationAlways]!.isGranted ||
+          statuses[Permission.location]!.isGranted;
+      if(Platform.isIOS) {
+        print('Not all permissions granted, checking native Bluetooth state');
+        bluetoothOk = await checkNativeBluetoothState();
+        print('Not all permissions granted, checking native Location state');
+        locationOk = await checkNativeLocationState();
       }
-    });
+      statuses.forEach((permission, status) async {
+        print('${permission.toString()}: ${status.toString()}');
+        if (status.isPermanentlyDenied && (bluetoothOk && locationOk)) {
+          print('Permanently denied, open settings');
+          await openAppSettings();
+        }
+      });
+      // Check if all permissions are granted
+      bool allGranted = statuses.values.every((status) => status.isGranted);
+      if (!allGranted) {
+        if(Platform.isIOS) {
+          return bluetoothOk && locationOk;
+        } else {
+          return false;
+        }
+      }
+
+      print('All permissions granted');
+      return true;
+    } catch (e) {
+      print('Error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> checkNativeBluetoothState() async {
+    try {
+      final result = await _methodChannel.invokeMethod('checkBluetoothState');
+      print('Native Bluetooth state: $result');
+      return result == 'poweredOn';
+    } on PlatformException catch (e) {
+      print('Failed to check native Bluetooth state: ${e.message}');
+      return false;
+    }
+  }
+
+  Future<bool> checkNativeLocationState() async {
+    try {
+      final result = await _methodChannel.invokeMethod('checkLocationState');
+      print('Manual location state check: $result');
+      return result == 'poweredOn';
+    } on PlatformException catch (e) {
+      print('Failed to check native Location state: ${e.message}');
+      return false;
+    }
   }
 
   Future<void> startScanning({bool? isBLE, int? timeout}) async {
@@ -166,17 +214,27 @@ class BluetoothService extends ChangeNotifier {
     }
   }
 
-  Future<void> pairDevice(String address) async {
-    try {
-      final result = await _methodChannel.invokeMethod('pairDevice', {'address': address});
-      print(result);
-    } on PlatformException catch (e) {
-      print("Failed to pair: ${e.message}");
-    }
+  Future<void> pairDevice(Device device) async {
+    // if(!Platform.isIOS) {
+      try {
+        final result;
+        if(Platform.isIOS) {
+          result = await _methodChannel.invokeMethod('pairDevice', {'deviceName': device.name});
+        } else {
+          result = await _methodChannel.invokeMethod('pairDevice', {'address': device.address});
+        }
+        print(result);
+      } on PlatformException catch (e) {
+        print("Failed to pair: ${e.message}");
+      }
+    // } else {
+    //   print("Pairing is not supported on iOS");
+    // }
+
   }
 
   Stream<Map<String, dynamic>> get pairingStateStream =>
-      _pairingStateChannel.receiveBroadcastStream().map((event) => Map<String, dynamic>.from(event));
+      _pairingStateChannel.receiveBroadcastStream('com.example/bluetooth_pairing_state').map((event) => Map<String, dynamic>.from(event));
 
   Future<void> connectToDevice(bool? isBLE, String address, String uuid) async {
     await _methodChannel.invokeMethod('connectToDevice', {'address': address, 'uuid': uuid, 'isBLE': isBLE ?? false});
@@ -186,8 +244,8 @@ class BluetoothService extends ChangeNotifier {
     await _methodChannel.invokeMethod('disconnect');
   }
 
-  Future<void> sendData(String address, String data) async {
-    await _methodChannel.invokeMethod('sendData', {'address': address, 'data': data});
+  Future<void> sendData(String address, String data, {bool? isBle}) async {
+    await _methodChannel.invokeMethod('sendData', {'address': address, 'data': data, 'isBle': isBle ?? false});
   }
 
   Future<Map<String, dynamic>?> checkPrinterStatus() async {
@@ -204,7 +262,7 @@ class BluetoothService extends ChangeNotifier {
 
   Stream<List<Device>> get discoveredDevicesStream {
     List<Device> devices = [];
-    return _discoveredDevicesChannel.receiveBroadcastStream().map((device) {
+    return _discoveredDevicesChannel.receiveBroadcastStream('com.example/bluetooth_discovered_devices').map((device) {
       if (device.containsKey('event') && device['event'] == 'timeout') {
         print('Scan timeout: ${device['message']}');
       } else {
@@ -225,7 +283,7 @@ class BluetoothService extends ChangeNotifier {
 
   Stream<List<Device>> get pairedDevicesStream {
     List<Device> devices = [];
-    return _pairedDevicesChannel.receiveBroadcastStream().map((device) {
+    return _pairedDevicesChannel.receiveBroadcastStream('com.example/bluetooth_paired_devices').map((device) {
       if (device.containsKey('event') && device['event'] == 'timeout') {
         print('Scan timeout: ${device['message']}');
       } else {
